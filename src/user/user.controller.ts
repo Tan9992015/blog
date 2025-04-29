@@ -6,37 +6,107 @@ import {
   Delete,
   Param,
   Body,
+  UseGuards,
+  Query,
+  UseInterceptors,
+  UploadedFile,
+  Req,
+  Res,
 } from '@nestjs/common';
 import { UserService } from './user.service';
 import { User } from './user.interface';
-import { Observable } from 'rxjs';
-
+import { hasRoles } from 'src/auth/decorators/roles.decorator';
+import { JwtGuard } from 'src/auth/guards/jwt.guard';
+import { RoleGuard } from 'src/auth/guards/role.guard';
+import { UserRole } from './user.entity';
+import { Pagination } from 'nestjs-typeorm-paginate';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { diskStorage } from 'multer';
+import * as path from 'path';
+import {v4 as uuidv4} from 'uuid'
+import { join } from 'path';
 @Controller('user')
 export class UserController {
   constructor(private readonly userService: UserService) {}
 
   @Post('/create')
-  create(@Body() user: User): Observable<User> {
-    return this.userService.createUser(user);
+  async create(@Body() user: User): Promise<string> {
+    return await this.userService.createUser(user);
   }
 
+ 
   @Get(':id')
-  findOne(@Param() params: any): Observable<any> {
-    return this.userService.findOne(params.id);
+  async findOne(@Param() params: any): Promise<any> {
+    return await this.userService.findOne(params.id);
   }
 
-  @Get('/all')
-  findAll(): Observable<User[]> {
-    return this.userService.findAll();
-  }
+  // @Get()
+  // async findAll(): Promise<any> {
+  //   return await this.userService.findAll();
+  // }
 
+  
+  @hasRoles(UserRole.ADMIN)
+  @UseGuards(JwtGuard,RoleGuard)
   @Delete(':id')
-  delete(@Param('id') id: string): Observable<any> {
+  delete(@Param('id') id: string): Promise<any> {
     return this.userService.deletedOne(Number(id));
   }
 
   @Put(':id')
-  updateOne(@Param('id') id: string, @Body() user: User): Observable<any> {
-    return this.userService.findOne(Number(id));
+  async updateOne(@Param('id') id: string, @Body() user: User): Promise<any> {
+    return await this.userService.updatedOne(Number(id),user);
   }
+  @Post('/login')
+  async login(@Body() user:User):Promise<string|{access_token:string}> {
+    console.log(process.cwd())
+    return await this.userService.login(user)
+  }
+
+  @Put(':id/role')
+  async updateRoleUser(@Param('id') id:string,@Body() user:User){
+    return await this.userService.updateRoleUser(Number(id),user)  
+}
+ 
+  @Get()
+  async hello(
+    @Query('page') page: string,
+    @Query('limit') limit: string,
+    @Query('userName') userName1:string
+  ): Promise<Pagination<User>> {
+    console.log(page)
+    console.log(limit)
+    console.log(userName1)
+    if(!userName1){
+      return await this.userService.paginateService({page:Number(page) || 1,limit:Number(limit) || 5,route:'http://localhost:3000/user'})
+    }else return await this.userService.paginateByUserName({page:Number(page) || 1,limit:Number(limit) || 5,route:'http://localhost:3000/user'}, {userName:userName1})
+  }
+
+  // file handling 
+  @hasRoles(UserRole.ADMIN)
+  @UseGuards(JwtGuard,RoleGuard)
+  @Post('upload') 
+  @UseInterceptors(FileInterceptor('file', {
+    storage:diskStorage({
+      destination:'./uploads/profileimages',
+      filename:(req,file,cb)=> {
+        const filename:string = path.parse(file.originalname).name.replace(/\s/g,'')+uuidv4()
+        const extention:string = path.parse(file.originalname).ext
+        cb(null,`${filename}${extention}`)
+      }
+    })
+  }))
+ async uploadFile(@UploadedFile() file,@Req() req):Promise<Object> {
+    // console.log(file)
+    const user:User = req.user.user 
+    console.log(user)
+    return await this.userService.updatedOneByEmail(user.email, {profileImage:file.filename})
+    // return Promise.resolve({imagePath:file.filename})
+  }
+
+  // process.cwd() = D:\blog\blog-api
+  @Get('profile-image/:imagename')
+    findProfileImage(@Param('imagename') imagename,@Res() res):Promise<Object> {
+      return res.sendFile(join(process.cwd(),'uploads/profileimages/'+imagename))
+    }
 }

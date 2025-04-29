@@ -5,6 +5,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule } from '@nestjs/config';
 import { UserEntity } from './user/user.entity';
 import { UserModule } from './user/user.module';
+import { BlogModule } from './blog/blog.module';
 @Module({
   imports: [
     ConfigModule.forRoot({isGlobal:true}),
@@ -18,7 +19,8 @@ import { UserModule } from './user/user.module';
     autoLoadEntities: true,
     synchronize:true,
   }),
-  UserModule
+  UserModule,
+  BlogModule
 ],
   controllers: [AppController],
   providers: [AppService],
